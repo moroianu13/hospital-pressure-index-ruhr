@@ -1,29 +1,5 @@
-try:
-    import streamlit as st
-except Exception:
-    # Fallback stub for environments without streamlit (e.g., linting/CI)
-    from types import SimpleNamespace
 
-    class _Sidebar:
-        def slider(self, *a, **k):
-            return a[2] if len(a) >= 3 else 0
-        def header(self, *a, **k):
-            return None
-
-    def _noop(*a, **k):
-        return None
-
-    st = SimpleNamespace(
-        set_page_config=_noop,
-        title=_noop,
-        caption=_noop,
-        sidebar=_Sidebar(),
-        metric=_noop,
-        success=_noop,
-        warning=_noop,
-        error=_noop,
-        markdown=_noop,
-    )
+import streamlit as st
 
 from src.features.pressure_index import calculate_hpi
 

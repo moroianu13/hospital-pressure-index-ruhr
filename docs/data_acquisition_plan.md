@@ -237,3 +237,37 @@ Planned usage:
 4. Filter Ruhrgebiet cities.
 5. Create data/processed/ruhr_city_hospital_capacity_official.csv.
 6. Replace sample hospital capacity values in the dashboard.
+
+## First official dataset candidate
+
+### Open.NRW / Landesdatenbank NRW hospital statistics
+
+Dataset title:
+
+Krankenhausstatistik: Anzahl der Krankenhäuser, aufgestellte Betten, Fallzahl, Berechnungs- und Belegungstage, Verweildauer und Bettennutzung - kreisfreie Städte und Kreise - Stichtag (ab 2002)
+
+Why this dataset matters:
+
+This is the first official dataset candidate for replacing the current sample data. It contains the core variables needed for the city-level Hospital Pressure Index:
+
+- number of hospitals
+- hospital beds
+- inpatient cases
+- calculation / occupancy days
+- average length of stay
+- bed utilization
+
+Geographic level:
+
+- kreisfreie Städte
+- Kreise
+
+This matches the planned Ruhrgebiet city-level layer.
+
+Planned output file:
+
+data/processed/ruhr_city_hospital_capacity_official.csv
+
+Source page:
+
+Open.NRW dataset page for hospital statistics by kreisfreie Städte and Kreise.

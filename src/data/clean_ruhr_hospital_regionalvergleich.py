@@ -102,6 +102,34 @@ def filter_ruhr_cities(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["city"].isin(RUHR_CITIES)].copy()
 
 
+def replace_structural_zeros_with_missing(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace structural zeros (0) with missing (pd.NA) for relevant numeric cols.
+
+    Some datasets use 0 to indicate missing / not applicable values (structural
+    zeros). Replace these with pd.NA so downstream numeric conversions and
+    indicators behave correctly.
+    """
+    df = df.copy()
+
+    # Columns where a value of 0 is more likely to indicate missing / not
+    # applicable rather than a true count. Do not include 'year' here.
+    structural_cols = [
+        "hospitals",
+        "hospital_physicians",
+        "beds",
+        "stationary_patients",
+        "occupancy_days",
+    ]
+
+    for col in structural_cols:
+        if col in df.columns:
+            # preserve nullable integer dtype where possible
+            mask = df[col].astype(object).isin([0, "0"])  # catch string zeros
+            df.loc[mask, col] = pd.NA
+
+    return df
+
+
 def clean_dataset() -> pd.DataFrame:
     """Run full cleaning pipeline."""
     df = read_raw_data()
@@ -112,6 +140,7 @@ def clean_dataset() -> pd.DataFrame:
     df = df[columns_to_keep]
 
     df = clean_numeric_columns(df)
+    df = replace_structural_zeros_with_missing(df)
     df = filter_ruhr_cities(df)
     df = add_derived_indicators(df)
 

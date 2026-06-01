@@ -3,7 +3,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.features.pressure_index import calculate_hpi, min_max_scale
+from src.data.load_city_data import load_prepared_ruhr_city_data
+from src.features.pressure_index import min_max_scale
 
 st.set_page_config(
     page_title="Hospital Pressure Index — Ruhrgebiet",
@@ -13,11 +14,22 @@ st.set_page_config(
 st.title("Hospital Pressure Index — Ruhrgebiet")
 st.caption("Prototype for estimating hospital system pressure in the Ruhr region.")
 
-DATA_PATH = "data/processed/ruhr_cities_sample.csv"
-
 @st.cache_data
 def load_data():
-    return pd.read_csv(DATA_PATH)
+    return load_prepared_ruhr_city_data()
+
+
+def calculate_hpi(patient_load_score, bed_capacity_score, patients_per_bed_score, occupancy_score, demographic_score, socioeconomic_score):
+    """Calculate Hospital Pressure Index as weighted average of components."""
+    return (
+        patient_load_score * 0.25 +
+        bed_capacity_score * 0.20 +
+        patients_per_bed_score * 0.20 +
+        occupancy_score * 0.20 +
+        demographic_score * 0.10 +
+        socioeconomic_score * 0.05
+    )
+
 
 df = load_data()
 
@@ -75,8 +87,8 @@ lowest_city = df.sort_values("hpi", ascending=True).iloc[0]
 col1, col2, col3 = st.columns(3)
 
 col1.metric("Average Ruhr HPI", f"{avg_hpi}/100")
-col2.metric("Highest pressure city", f"{highest_city['city']} ({highest_city['hpi']}/100)")
-col3.metric("Lowest pressure city", f"{lowest_city['city']} ({lowest_city['hpi']}/100)")
+col2.metric("Highest pressure city", f"{highest_city['city']} ({highest_city['hpi']:.2f}/100)")
+col3.metric("Lowest pressure city", f"{lowest_city['city']} ({lowest_city['hpi']:.2f}/100)")
 
 st.divider()
 
@@ -91,7 +103,9 @@ with left:
         text="hpi",
         labels={"hpi": "Hospital Pressure Index", "city": "City"},
     )
-    fig.update_traces(textposition="outside")
+    fig.update_traces(
+        texttemplate="%{text:.2f}",
+        textposition="outside")
     fig.update_layout(yaxis_range=[0, 100])
     st.plotly_chart(fig, use_container_width=True)
 
@@ -100,10 +114,10 @@ with right:
     city_row = df[df["city"] == selected_city].iloc[0]
 
     st.subheader(selected_city)
-    st.metric("HPI", f"{city_row['hpi']}/100")
+    st.metric("HPI", f"{city_row['hpi']:.2f}/100")
     st.metric("Patients per bed", round(city_row["patients_per_bed"], 1))
     st.metric("Beds per 1,000 population", round(city_row["beds_per_1000_population"], 2))
-    st.metric("Bed occupancy", f"{city_row['bed_occupancy_rate']}%")
+    st.metric("Bed occupancy", f"{city_row['bed_occupancy_rate']:.1f}%")
 
     component_df = pd.DataFrame(
         {

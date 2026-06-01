@@ -24,6 +24,13 @@ df = load_data()
 # Basic derived indicators
 df["patients_per_bed"] = df["stationary_patients"] / df["beds"]
 df["beds_per_1000_population"] = df["beds"] / df["population"] * 1000
+df["patients_per_bed_score"] = df["patients_per_bed"].apply(
+    lambda x: min_max_scale(
+        x,
+        df["patients_per_bed"].min(),
+        df["patients_per_bed"].max(),
+    )
+)
 df["patients_per_1000_population"] = df["stationary_patients"] / df["population"] * 1000
 
 # Pressure components
@@ -52,12 +59,14 @@ df["hpi"] = df.apply(
     lambda row: calculate_hpi(
         patient_load_score=row["patient_load_score"],
         bed_capacity_score=row["bed_capacity_score"],
+        patients_per_bed_score=row["patients_per_bed_score"],
         occupancy_score=row["occupancy_score"],
         demographic_score=row["demographic_score"],
         socioeconomic_score=row["socioeconomic_score"],
     ),
     axis=1,
 )
+
 
 avg_hpi = round(df["hpi"].mean(), 2)
 highest_city = df.sort_values("hpi", ascending=False).iloc[0]
@@ -104,6 +113,7 @@ with right:
                 "Occupancy",
                 "Demographic",
                 "Socio-economic",
+                "Patients per bed",
             ],
             "score": [
                 city_row["patient_load_score"],
@@ -111,7 +121,8 @@ with right:
                 city_row["occupancy_score"],
                 city_row["demographic_score"],
                 city_row["socioeconomic_score"],
-            ],
+                city_row["patients_per_bed_score"],
+            ]
         }
     )
 

@@ -17,6 +17,7 @@ def test_calculate_hpi_returns_expected_weighted_score():
     result = calculate_hpi(
         patient_load_score=80,
         bed_capacity_score=70,
+        patients_per_bed_score=75,
         occupancy_score=90,
         demographic_score=60,
         socioeconomic_score=50,

@@ -73,7 +73,7 @@ with left:
 with right:
     selected_city = st.selectbox("Select city", df["city"].sort_values())
     city_row = df[df["city"] == selected_city].iloc[0]
-
+    city_history = df_all[df_all["city"] == selected_city].sort_values("year")
     st.subheader(selected_city)
     st.metric("HPI", f"{city_row['hpi']:.2f}/100")
     st.metric("Patients per bed", round(city_row["patients_per_bed"], 1))
@@ -108,6 +108,22 @@ with right:
         labels={"score": "Pressure score", "component": "Component"},
         title="Pressure drivers",
     )
+    
+    st.subheader(f"HPI trend — {selected_city}")
+
+    trend_fig = px.line(
+    city_history,
+    x="year",
+    y="hpi",
+    markers=True,
+    labels={"year": "Year", "hpi": "Hospital Pressure Index"},
+)
+
+    trend_fig.update_layout(yaxis_range=[0, 100])
+
+    st.plotly_chart(trend_fig, use_container_width=True)
+
+
     component_fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
     component_fig.update_layout(xaxis_range=[0, 100])
 

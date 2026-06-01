@@ -52,3 +52,29 @@ def calculate_hpi(
     )
 
     return round(hpi, 2)
+
+def calculate_hospital_only_hpi(
+    patients_per_bed_score: float,
+    patients_per_physician_score: float,
+    occupancy_score: float,
+    length_of_stay_score: float,
+) -> float:
+    """
+    Calculate a hospital-only pressure index based only on official hospital data.
+
+    All input scores should be between 0 and 100.
+
+    Weights:
+    - patients per bed: 30%
+    - patients per physician: 30%
+    - bed occupancy: 25%
+    - average length of stay: 15%
+    """
+    hpi = (
+        patients_per_bed_score * 0.30
+        + patients_per_physician_score * 0.30
+        + occupancy_score * 0.25
+        + length_of_stay_score * 0.15
+    )
+
+    return round(hpi, 2)

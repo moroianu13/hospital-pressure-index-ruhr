@@ -3,8 +3,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.data.load_city_data import load_prepared_ruhr_city_data
-from src.features.pressure_index import min_max_scale
+from src.data.load_city_data import load_latest_official_ruhr_hospital_pressure_data
+
 
 st.set_page_config(
     page_title="Hospital Pressure Index — Ruhrgebiet",
@@ -12,72 +12,20 @@ st.set_page_config(
 )
 
 st.title("Hospital Pressure Index — Ruhrgebiet")
-st.caption("Prototype for estimating hospital system pressure in the Ruhr region.")
+st.caption("Official hospital-data prototype for estimating hospital system pressure in the Ruhr region.")
 
 @st.cache_data
 def load_data():
-    return load_prepared_ruhr_city_data()
+    return load_latest_official_ruhr_hospital_pressure_data()
 
 
-def calculate_hpi(patient_load_score, bed_capacity_score, patients_per_bed_score, occupancy_score, demographic_score, socioeconomic_score):
-    """Calculate Hospital Pressure Index as weighted average of components."""
-    return (
-        patient_load_score * 0.25 +
-        bed_capacity_score * 0.20 +
-        patients_per_bed_score * 0.20 +
-        occupancy_score * 0.20 +
-        demographic_score * 0.10 +
-        socioeconomic_score * 0.05
-    )
+
 
 
 df = load_data()
 
-# Basic derived indicators
-df["patients_per_bed"] = df["stationary_patients"] / df["beds"]
-df["beds_per_1000_population"] = df["beds"] / df["population"] * 1000
-df["patients_per_bed_score"] = df["patients_per_bed"].apply(
-    lambda x: min_max_scale(
-        x,
-        df["patients_per_bed"].min(),
-        df["patients_per_bed"].max(),
-    )
-)
-df["patients_per_1000_population"] = df["stationary_patients"] / df["population"] * 1000
 
-# Pressure components
-df["patient_load_score"] = df["patients_per_1000_population"].apply(
-    lambda x: min_max_scale(x, df["patients_per_1000_population"].min(), df["patients_per_1000_population"].max())
-)
 
-# Lower beds per population = higher pressure, so we invert it
-df["bed_capacity_score"] = df["beds_per_1000_population"].apply(
-    lambda x: 100 - min_max_scale(x, df["beds_per_1000_population"].min(), df["beds_per_1000_population"].max())
-)
-
-df["occupancy_score"] = df["bed_occupancy_rate"].apply(
-    lambda x: min_max_scale(x, df["bed_occupancy_rate"].min(), df["bed_occupancy_rate"].max())
-)
-
-df["demographic_score"] = df["population_65_plus_pct"].apply(
-    lambda x: min_max_scale(x, df["population_65_plus_pct"].min(), df["population_65_plus_pct"].max())
-)
-
-df["socioeconomic_score"] = df["unemployment_rate"].apply(
-    lambda x: min_max_scale(x, df["unemployment_rate"].min(), df["unemployment_rate"].max())
-)
-
-df["hpi"] = df.apply(
-    lambda row: calculate_hpi(
-        patient_load_score=row["patient_load_score"],
-        bed_capacity_score=row["bed_capacity_score"],
-        patients_per_bed_score=row["patients_per_bed_score"],
-        occupancy_score=row["occupancy_score"],
-        demographic_score=row["demographic_score"],
-        socioeconomic_score=row["socioeconomic_score"],
-    ),
-    axis=1,
-)
 
 
 avg_hpi = round(df["hpi"].mean(), 2)
@@ -116,26 +64,24 @@ with right:
     st.subheader(selected_city)
     st.metric("HPI", f"{city_row['hpi']:.2f}/100")
     st.metric("Patients per bed", round(city_row["patients_per_bed"], 1))
-    st.metric("Beds per 1,000 population", round(city_row["beds_per_1000_population"], 2))
+    st.metric("Patients per physician", round(city_row["patients_per_physician"], 1))
     st.metric("Bed occupancy", f"{city_row['bed_occupancy_rate']:.1f}%")
-
+    st.metric("Average length of stay", f"{city_row['avg_length_of_stay']:.1f} days")
+    
+    
     component_df = pd.DataFrame(
         {
             "component": [
-                "Patient load",
-                "Bed capacity",
-                "Occupancy",
-                "Demographic",
-                "Socio-economic",
-                "Patients per bed",
+                 "Patients per bed",
+                 "Patients per physician",
+                 "Occupancy",
+                 "Length of stay",
             ],
             "score": [
-                city_row["patient_load_score"],
-                city_row["bed_capacity_score"],
-                city_row["occupancy_score"],
-                city_row["demographic_score"],
-                city_row["socioeconomic_score"],
                 city_row["patients_per_bed_score"],
+                city_row["patients_per_physician_score"],
+                city_row["occupancy_score"],
+                city_row["length_of_stay_score"],
             ]
         }
     )
@@ -156,23 +102,27 @@ with right:
 st.divider()
 
 st.subheader("City-level dataset")
+
 st.dataframe(
     df[
         [
             "city",
-            "population",
+            "year",
             "hospitals",
+            "hospital_physicians",
             "beds",
             "stationary_patients",
             "bed_occupancy_rate",
-            "population_65_plus_pct",
-            "unemployment_rate",
+            "avg_length_of_stay",
+            "patients_per_bed",
+            "patients_per_physician",
             "hpi",
         ]
     ].sort_values("hpi", ascending=False),
     use_container_width=True,
 )
 
-st.warning(
-    "Current data is sample data for prototyping. Next step: replace it with official IT.NRW / Destatis data."
+st.info(
+    "This dashboard uses official Ruhr/NRW hospital statistics for 2015–2023. "
+    "Current HPI version is hospital-only and does not yet include demographics or socio-economic indicators."
 )

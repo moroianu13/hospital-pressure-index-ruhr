@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.features.pressure_index import calculate_hpi, min_max_scale
+from src.features.pressure_index import (
+    calculate_hpi,
+    calculate_hospital_only_hpi,
+    min_max_scale,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -130,3 +134,69 @@ def load_latest_official_ruhr_hospital_data() -> pd.DataFrame:
     latest_year = df["year"].max()
 
     return df[df["year"] == latest_year].copy()
+
+def add_official_hospital_pressure_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """Add pressure component scores for official hospital-only data."""
+    df = df.copy()
+
+    df["patients_per_bed_score"] = df["patients_per_bed"].apply(
+        lambda x: min_max_scale(
+            x,
+            df["patients_per_bed"].min(),
+            df["patients_per_bed"].max(),
+        )
+    )
+
+    df["patients_per_physician_score"] = df["patients_per_physician"].apply(
+        lambda x: min_max_scale(
+            x,
+            df["patients_per_physician"].min(),
+            df["patients_per_physician"].max(),
+        )
+    )
+
+    df["occupancy_score"] = df["bed_occupancy_rate"].apply(
+        lambda x: min_max_scale(
+            x,
+            df["bed_occupancy_rate"].min(),
+            df["bed_occupancy_rate"].max(),
+        )
+    )
+
+    df["length_of_stay_score"] = df["avg_length_of_stay"].apply(
+        lambda x: min_max_scale(
+            x,
+            df["avg_length_of_stay"].min(),
+            df["avg_length_of_stay"].max(),
+        )
+    )
+
+    return df
+
+
+def add_official_hospital_hpi(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate hospital-only HPI for official data."""
+    df = df.copy()
+
+    df["hpi"] = df.apply(
+        lambda row: calculate_hospital_only_hpi(
+            patients_per_bed_score=row["patients_per_bed_score"],
+            patients_per_physician_score=row["patients_per_physician_score"],
+            occupancy_score=row["occupancy_score"],
+            length_of_stay_score=row["length_of_stay_score"],
+        ),
+        axis=1,
+    )
+
+    df["hpi"] = df["hpi"].round(2)
+
+    return df
+
+
+def load_latest_official_ruhr_hospital_pressure_data() -> pd.DataFrame:
+    """Load latest official hospital data and calculate hospital-only HPI."""
+    df = load_latest_official_ruhr_hospital_data()
+    df = add_official_hospital_pressure_scores(df)
+    df = add_official_hospital_hpi(df)
+
+    return df

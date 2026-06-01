@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.data.load_city_data import load_latest_official_ruhr_hospital_pressure_data
+from src.data.load_city_data import load_official_ruhr_hospital_pressure_data
 
 
 st.set_page_config(
@@ -12,20 +12,33 @@ st.set_page_config(
 )
 
 st.title("Hospital Pressure Index — Ruhrgebiet")
-st.caption("Official hospital-data prototype for estimating hospital system pressure in the Ruhr region.")
+
 
 @st.cache_data
 def load_data():
-    return load_latest_official_ruhr_hospital_pressure_data()
+    return load_official_ruhr_hospital_pressure_data()
 
 
 
 
 
-df = load_data()
+df_all = load_data()
 
 
+available_years = sorted(df_all["year"].dropna().unique(), reverse=True)
 
+selected_year = st.sidebar.selectbox(
+    "Select year",
+    available_years,
+    index=0,
+)
+
+st.caption(
+    f"Official hospital-data prototype for the Ruhr region. Selected year: {selected_year}"
+)
+
+
+df = df_all[df_all["year"] == selected_year].copy()
 
 
 avg_hpi = round(df["hpi"].mean(), 2)

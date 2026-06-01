@@ -200,3 +200,11 @@ def load_latest_official_ruhr_hospital_pressure_data() -> pd.DataFrame:
     df = add_official_hospital_hpi(df)
 
     return df
+
+def load_official_ruhr_hospital_pressure_data() -> pd.DataFrame:
+    """Load official hospital data and calculate hospital-only HPI for all years."""
+    df = load_official_ruhr_hospital_data()
+    df = add_official_hospital_pressure_scores(df)
+    df = add_official_hospital_hpi(df)
+
+    return df

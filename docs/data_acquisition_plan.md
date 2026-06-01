@@ -202,3 +202,38 @@ The Hospital Pressure Index is a transparent analytical indicator, not a clinica
 3. Store raw file in data/raw/.
 4. Create cleaning script in src/data/.
 5. Replace sample dashboard dataset with official processed dataset.
+
+## First official dataset candidate
+
+### Open.NRW hospital statistics dataset
+
+Dataset title:
+
+Krankenhausstatistik: Anzahl der Krankenhäuser, aufgestellte Betten, Fallzahl, Berechnungs- und Belegungstage, Verweildauer und Bettennutzung
+
+Why this dataset is relevant:
+
+This dataset contains the core variables required for the first official version of the Hospital Pressure Index:
+
+- number of hospitals
+- hospital beds
+- inpatient cases
+- calculation / occupancy days
+- average length of stay
+- bed utilization
+
+Geographic level:
+
+- kreisfreie Städte
+- Kreise
+
+This matches the planned city-level Ruhrgebiet layer.
+
+Planned usage:
+
+1. Download dataset from Open.NRW.
+2. Store original file in data/raw/.
+3. Create cleaning script in src/data/.
+4. Filter Ruhrgebiet cities.
+5. Create data/processed/ruhr_city_hospital_capacity_official.csv.
+6. Replace sample hospital capacity values in the dashboard.

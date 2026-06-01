@@ -96,6 +96,38 @@ with right:
     st.metric("Beds per 1,000 population", round(city_row["beds_per_1000_population"], 2))
     st.metric("Bed occupancy", f"{city_row['bed_occupancy_rate']}%")
 
+    component_df = pd.DataFrame(
+        {
+            "component": [
+                "Patient load",
+                "Bed capacity",
+                "Occupancy",
+                "Demographic",
+                "Socio-economic",
+            ],
+            "score": [
+                city_row["patient_load_score"],
+                city_row["bed_capacity_score"],
+                city_row["occupancy_score"],
+                city_row["demographic_score"],
+                city_row["socioeconomic_score"],
+            ],
+        }
+    )
+
+    component_fig = px.bar(
+        component_df,
+        x="score",
+        y="component",
+        orientation="h",
+        text="score",
+        labels={"score": "Pressure score", "component": "Component"},
+        title="Pressure drivers",
+    )
+    component_fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
+    component_fig.update_layout(xaxis_range=[0, 100])
+
+    st.plotly_chart(component_fig, use_container_width=True)
 st.divider()
 
 st.subheader("City-level dataset")

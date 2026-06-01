@@ -112,3 +112,21 @@ def load_prepared_ruhr_city_data() -> pd.DataFrame:
     df = add_hpi(df)
 
     return df
+
+
+OFFICIAL_HOSPITAL_DATA_PATH = (
+    PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_regionalvergleich_clean.csv"
+)
+
+
+def load_official_ruhr_hospital_data() -> pd.DataFrame:
+    """Load cleaned official Ruhr hospital dataset."""
+    return pd.read_csv(OFFICIAL_HOSPITAL_DATA_PATH)
+
+
+def load_latest_official_ruhr_hospital_data() -> pd.DataFrame:
+    """Load the latest available year from the official Ruhr hospital dataset."""
+    df = load_official_ruhr_hospital_data()
+    latest_year = df["year"].max()
+
+    return df[df["year"] == latest_year].copy()

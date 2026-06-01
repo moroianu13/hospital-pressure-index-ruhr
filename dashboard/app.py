@@ -24,7 +24,6 @@ def load_data():
 
 df_all = load_data()
 
-
 available_years = sorted(df_all["year"].dropna().unique(), reverse=True)
 
 selected_year = st.sidebar.selectbox(
@@ -33,17 +32,34 @@ selected_year = st.sidebar.selectbox(
     index=0,
 )
 
+df = df_all[df_all["year"] == selected_year].copy()
+
+required_hpi_columns = [
+    "patients_per_bed",
+    "patients_per_physician",
+    "bed_occupancy_rate",
+    "avg_length_of_stay",
+    "hpi",
+]
+
+df_complete = df.dropna(subset=required_hpi_columns).copy()
+df_incomplete = df[df[required_hpi_columns].isna().any(axis=1)].copy()
+
+if not df_incomplete.empty:
+    missing_cities = ", ".join(sorted(df_incomplete["city"].unique()))
+
+    st.warning(
+        f"The following cities are excluded from the HPI ranking for {selected_year} "
+        f"because official hospital data is incomplete or suppressed: {missing_cities}."
+    )
+
 st.caption(
     f"Official hospital-data prototype for the Ruhr region. Selected year: {selected_year}"
 )
 
-
-df = df_all[df_all["year"] == selected_year].copy()
-
-
-avg_hpi = round(df["hpi"].mean(), 2)
-highest_city = df.sort_values("hpi", ascending=False).iloc[0]
-lowest_city = df.sort_values("hpi", ascending=True).iloc[0]
+avg_hpi = round(df_complete["hpi"].mean(), 2)
+highest_city = df_complete.sort_values("hpi", ascending=False).iloc[0]
+lowest_city = df_complete.sort_values("hpi", ascending=True).iloc[0]
 
 col1, col2, col3 = st.columns(3)
 
@@ -58,7 +74,7 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("Hospital Pressure Index by city")
     fig = px.bar(
-        df.sort_values("hpi", ascending=False),
+        df_complete.sort_values("hpi", ascending=False),
         x="city",
         y="hpi",
         text="hpi",
@@ -71,8 +87,17 @@ with left:
     st.plotly_chart(fig, use_container_width=True)
 
 with right:
-    selected_city = st.selectbox("Select city", df["city"].sort_values())
+    selected_city = st.selectbox("Select city", df_complete["city"].sort_values())
     city_row = df[df["city"] == selected_city].iloc[0]
+    
+    if pd.isna(city_row["hpi"]):
+        st.warning(
+        "Insufficient data for HPI calculation in this city/year. "
+        "Some required hospital indicators are missing or suppressed."
+    )
+    else:
+        st.metric("HPI", f"{city_row['hpi']:.2f}/100")
+        
     city_history = df_all[df_all["city"] == selected_city].sort_values("year")
     st.subheader(selected_city)
     st.metric("HPI", f"{city_row['hpi']:.2f}/100")

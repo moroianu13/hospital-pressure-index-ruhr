@@ -178,7 +178,18 @@ def add_official_hospital_hpi(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate hospital-only HPI for official data."""
     df = df.copy()
 
-    df["hpi"] = df.apply(
+    required_score_columns = [
+        "patients_per_bed_score",
+        "patients_per_physician_score",
+        "occupancy_score",
+        "length_of_stay_score",
+    ]
+
+    df["hpi"] = pd.NA
+
+    complete_rows = df[required_score_columns].notna().all(axis=1)
+
+    df.loc[complete_rows, "hpi"] = df.loc[complete_rows].apply(
         lambda row: calculate_hospital_only_hpi(
             patients_per_bed_score=row["patients_per_bed_score"],
             patients_per_physician_score=row["patients_per_physician_score"],
@@ -188,7 +199,7 @@ def add_official_hospital_hpi(df: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
 
-    df["hpi"] = df["hpi"].round(2)
+    df["hpi"] = pd.to_numeric(df["hpi"], errors="coerce").round(2)
 
     return df
 

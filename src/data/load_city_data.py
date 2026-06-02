@@ -228,3 +228,94 @@ COMBINED_HOSPITAL_DATA_PATH = (
 def load_combined_ruhr_hospital_data() -> pd.DataFrame:
     """Load combined Ruhr hospital capacity and physician dataset."""
     return pd.read_csv(COMBINED_HOSPITAL_DATA_PATH)
+
+
+from src.features.pressure_index import calculate_hospital_only_hpi, min_max_scale
+
+
+def add_hpi_scores_by_year(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate HPI scores year-by-year.
+
+    Scores are normalized within each selected year, so the HPI shows
+    relative pressure compared with other Ruhr cities in the same year.
+    """
+    df = df.copy()
+
+    required_columns = [
+        "stationary_patients",
+        "beds",
+        "hospital_physicians",
+        "bed_occupancy_rate",
+        "avg_length_of_stay",
+        "patients_per_bed",
+        "patients_per_physician",
+    ]
+
+    df["is_hpi_complete"] = (
+        df[required_columns].notna().all(axis=1)
+        & (df["stationary_patients"] > 0)
+        & (df["beds"] > 0)
+        & (df["hospital_physicians"] > 0)
+        & (df["bed_occupancy_rate"] > 0)
+        & (df["avg_length_of_stay"] > 0)
+    )
+
+    df["hpi"] = pd.NA
+    df["patients_per_bed_score"] = pd.NA
+    df["patients_per_physician_score"] = pd.NA
+    df["occupancy_score"] = pd.NA
+    df["length_of_stay_score"] = pd.NA
+
+    for year in sorted(df["year"].dropna().unique()):
+        year_mask = (df["year"] == year) & df["is_hpi_complete"]
+        year_df = df.loc[year_mask].copy()
+
+        if year_df.empty:
+            continue
+
+        score_specs = [
+            ("patients_per_bed", "patients_per_bed_score"),
+            ("patients_per_physician", "patients_per_physician_score"),
+            ("bed_occupancy_rate", "occupancy_score"),
+            ("avg_length_of_stay", "length_of_stay_score"),
+        ]
+
+        for source_column, score_column in score_specs:
+            min_value = year_df[source_column].min()
+            max_value = year_df[source_column].max()
+
+            df.loc[year_mask, score_column] = year_df[source_column].apply(
+                lambda x: min_max_scale(x, min_value, max_value)
+            )
+
+        df.loc[year_mask, "hpi"] = df.loc[year_mask].apply(
+            lambda row: calculate_hospital_only_hpi(
+                patients_per_bed_score=row["patients_per_bed_score"],
+                patients_per_physician_score=row["patients_per_physician_score"],
+                occupancy_score=row["occupancy_score"],
+                length_of_stay_score=row["length_of_stay_score"],
+            ),
+            axis=1,
+        )
+
+    numeric_columns = [
+        "hpi",
+        "patients_per_bed_score",
+        "patients_per_physician_score",
+        "occupancy_score",
+        "length_of_stay_score",
+    ]
+
+    for column in numeric_columns:
+        df[column] = pd.to_numeric(df[column], errors="coerce").round(2)
+
+    return df
+
+
+def load_combined_ruhr_hospital_pressure_data() -> pd.DataFrame:
+    """Load combined Ruhr hospital dataset and calculate HPI for all years."""
+    df = load_combined_ruhr_hospital_data()
+    df = add_hpi_scores_by_year(df)
+
+    return df

@@ -9,6 +9,18 @@ from src.data.load_city_data import (
 )
 
 
+SCENARIO_LABELS = {
+    "business_as_usual": "Business as usual",
+    "stress": "Stress scenario",
+    "recruitment_improvement": "Recruitment improvement",
+    "capacity_decline": "Capacity decline",
+}
+
+SCENARIO_LABEL_TO_KEY = {
+    label: key for key, label in SCENARIO_LABELS.items()
+}
+
+
 st.set_page_config(
     page_title="Hospital Pressure Index — Ruhrgebiet",
     layout="wide",
@@ -37,50 +49,48 @@ mode = st.sidebar.radio(
     ["Historical", "Forecast"],
 )
 
+selected_scenario = None
+selected_scenario_label = None
+
 if mode == "Historical":
     available_years = sorted(historical_all["year"].dropna().unique(), reverse=True)
 
     selected_year = st.sidebar.selectbox(
-        "Select year",
+        "Select year for cards/table",
         available_years,
         index=0,
     )
-
-    selected_scenario = None
 
     df = historical_all[historical_all["year"] == selected_year].copy()
     df_complete = df[df["is_hpi_complete"]].copy()
     df_incomplete = df[~df["is_hpi_complete"]].copy()
 
     st.caption(
-        f"Official hospital-data prototype for the Ruhr region. "
-        f"Selected year: {selected_year}"
+        f"Historical mode. Official Ruhr/NRW hospital data. "
+        f"Selected year for cards/table: {selected_year}"
     )
-    
+
 else:
-    SCENARIO_LABELS = {
-    "business_as_usual": "Business as usual",
-    "stress": "Stress scenario",
-    "recruitment_improvement": "Recruitment improvement",
-    "capacity_decline": "Capacity decline",
-}
     available_scenarios = sorted(forecast_all["scenario"].dropna().unique())
+    available_scenario_labels = [
+        SCENARIO_LABELS.get(scenario, scenario)
+        for scenario in available_scenarios
+    ]
 
     selected_scenario_label = st.sidebar.selectbox(
-    "Select scenario",
-    [SCENARIO_LABELS.get(s, s) for s in available_scenarios],
-)
+        "Select scenario",
+        available_scenario_labels,
+    )
 
-    selected_scenario = {
-    label: scenario for scenario, label in SCENARIO_LABELS.items()
-}.get(selected_scenario_label, selected_scenario_label)
-
-
+    selected_scenario = SCENARIO_LABEL_TO_KEY.get(
+        selected_scenario_label,
+        selected_scenario_label,
+    )
 
     available_years = sorted(forecast_all["year"].dropna().unique())
 
     selected_year = st.sidebar.selectbox(
-        "Select forecast year",
+        "Select forecast year for cards/table",
         available_years,
         index=0,
     )
@@ -94,8 +104,8 @@ else:
     df_incomplete = pd.DataFrame()
 
     st.caption(
-        f"Forecast mode for the Ruhr region. "
-        f"Scenario: {selected_scenario_label}. Selected year: {selected_year}"
+        f"Forecast mode. Scenario: {selected_scenario_label}. "
+        f"Selected year for cards/table: {selected_year}"
     )
 
 
@@ -137,29 +147,66 @@ st.divider()
 left, right = st.columns([2, 1])
 
 with left:
-    chart_title = (
-        "Hospital Pressure Index by city"
-        if mode == "Historical"
-        else f"Forecast HPI by city — {selected_scenario}"
-    )
+    if mode == "Historical":
+        st.subheader("HPI evolution by city — 2015–2024")
 
-    st.subheader(chart_title)
+        historical_complete_all = historical_all[
+            historical_all["is_hpi_complete"]
+        ].copy()
 
-    ranking_fig = px.bar(
-        df_complete.sort_values("hpi", ascending=False),
-        x="city",
-        y="hpi",
-        text="hpi",
-        labels={"hpi": "Hospital Pressure Index", "city": "City"},
-    )
+        central_fig = px.line(
+            historical_complete_all,
+            x="year",
+            y="hpi",
+            color="city",
+            markers=True,
+            labels={
+                "year": "Year",
+                "hpi": "Hospital Pressure Index",
+                "city": "City",
+            },
+            title="Historical HPI evolution by city",
+        )
 
-    ranking_fig.update_traces(
-        texttemplate="%{text:.2f}",
-        textposition="outside",
-    )
-    ranking_fig.update_layout(yaxis_range=[0, 100])
+        central_fig.update_layout(yaxis_range=[0, 100])
 
-    st.plotly_chart(ranking_fig, use_container_width=True)
+        st.plotly_chart(central_fig, use_container_width=True)
+
+        st.caption(
+            "This chart shows HPI evolution for all included Ruhr cities. "
+            "Cities with incomplete official data are excluded only for years where required data is missing."
+        )
+
+    else:
+        st.subheader(f"Forecast HPI comparison by city — {selected_scenario_label}")
+
+        scenario_history = forecast_all[
+            forecast_all["scenario"] == selected_scenario
+        ].copy()
+
+        central_fig = px.line(
+            scenario_history,
+            x="year",
+            y="hpi",
+            color="city",
+            markers=True,
+            labels={
+                "year": "Year",
+                "hpi": "Hospital Pressure Index",
+                "city": "City",
+            },
+            title="Forecast HPI evolution by city, 2025–2030",
+        )
+
+        central_fig.update_layout(yaxis_range=[0, 100])
+
+        st.plotly_chart(central_fig, use_container_width=True)
+
+        st.caption(
+            "This chart compares all included Ruhr cities across the full forecast period "
+            "for the selected scenario."
+        )
+
 
 with right:
     selected_city = st.selectbox(
@@ -232,6 +279,7 @@ with right:
         "not a missing or zero real value."
     )
 
+
 st.divider()
 
 if mode == "Historical":
@@ -241,13 +289,15 @@ if mode == "Historical":
     ].sort_values("year")
 
     trends_title = f"Historical trends — {selected_city}"
+
 else:
     city_history = forecast_all[
         (forecast_all["city"] == selected_city)
         & (forecast_all["scenario"] == selected_scenario)
     ].sort_values("year")
 
-    trends_title = f"Forecast trends — {selected_city} — {selected_scenario}"
+    trends_title = f"Forecast trends — {selected_city} — {selected_scenario_label}"
+
 
 st.subheader(trends_title)
 
@@ -299,6 +349,43 @@ with trend_col4:
         title="Doctors trend",
     )
     st.plotly_chart(doctors_fig, use_container_width=True)
+
+
+if mode == "Forecast":
+    st.divider()
+
+    st.subheader(f"Scenario comparison for selected city — {selected_city}")
+
+    scenario_city_history = forecast_all[
+        forecast_all["city"] == selected_city
+    ].copy()
+
+    scenario_city_history["scenario_label"] = scenario_city_history["scenario"].map(
+        SCENARIO_LABELS
+    ).fillna(scenario_city_history["scenario"])
+
+    scenario_comparison_fig = px.line(
+        scenario_city_history,
+        x="year",
+        y="hpi",
+        color="scenario_label",
+        markers=True,
+        labels={
+            "year": "Year",
+            "hpi": "Hospital Pressure Index",
+            "scenario_label": "Scenario",
+        },
+        title=f"HPI forecast by scenario — {selected_city}",
+    )
+
+    scenario_comparison_fig.update_layout(yaxis_range=[0, 100])
+
+    st.plotly_chart(scenario_comparison_fig, use_container_width=True)
+
+    st.caption(
+        "This chart compares all forecast scenarios for the selected city from 2025 to 2030."
+    )
+
 
 st.divider()
 
@@ -365,6 +452,7 @@ else:
         ].sort_values("hpi", ascending=False),
         use_container_width=True,
     )
+
 
 st.info(
     "This dashboard uses official Ruhr/NRW hospital statistics for 2015–2024 "

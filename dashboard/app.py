@@ -123,7 +123,18 @@ with right:
                 city_row["occupancy_score"],
                 city_row["length_of_stay_score"],
             ],
+            "actual_value": [
+                f"{city_row['patients_per_bed']:.1f}",
+                f"{city_row['patients_per_physician']:.1f}",
+                f"{city_row['bed_occupancy_rate']:.1f}%",
+                f"{city_row['avg_length_of_stay']:.1f} days",
+            ],
         }
+    )
+
+    component_df["label"] = component_df.apply(
+        lambda row: f"{row['score']:.1f} | actual: {row['actual_value']}",
+        axis=1,
     )
 
     component_fig = px.bar(
@@ -131,31 +142,30 @@ with right:
         x="score",
         y="component",
         orientation="h",
-        text="score",
+        text="label",
         labels={"score": "Relative pressure score", "component": "Component"},
         title="Relative pressure drivers",
     )
 
     component_fig.update_traces(
-        texttemplate="%{text:.1f}",
         textposition="outside",
         cliponaxis=False,
     )
 
     component_fig.update_layout(
-        xaxis_range=[0, 105],
-        margin=dict(l=20, r=40, t=50, b=20),
+        xaxis_range=[0, 120],
+        margin=dict(l=20, r=120, t=50, b=20),
     )
 
     st.plotly_chart(component_fig, use_container_width=True)
 
     st.caption(
-        "Pressure driver scores are normalized relative to other Ruhr cities "
-        "in the selected year. 100 means highest pressure among included cities; "
-        "0 means lowest pressure."
+        "Driver scores are relative within the selected year. "
+        "A score of 0 means lowest pressure among included cities for that metric, "
+        "not a missing or zero real value."
     )
 
-st.divider()
+    st.divider()
 
 city_history = df_all[
     (df_all["city"] == selected_city)

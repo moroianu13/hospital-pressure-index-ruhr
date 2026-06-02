@@ -3,7 +3,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.data.load_city_data import load_combined_ruhr_hospital_pressure_data
+from src.data.load_city_data import (
+    load_combined_ruhr_hospital_pressure_data,
+    load_ruhr_hospital_forecast_data,
+)
 
 
 st.set_page_config(
@@ -15,29 +18,74 @@ st.title("Hospital Pressure Index — Ruhrgebiet")
 
 
 @st.cache_data
-def load_data() -> pd.DataFrame:
-    """Load combined official hospital data with HPI scores."""
+def load_historical_data() -> pd.DataFrame:
+    """Load official hospital data with HPI scores."""
     return load_combined_ruhr_hospital_pressure_data()
 
 
-df_all = load_data()
+@st.cache_data
+def load_forecast_data() -> pd.DataFrame:
+    """Load forecast hospital pressure data."""
+    return load_ruhr_hospital_forecast_data()
 
-available_years = sorted(df_all["year"].dropna().unique(), reverse=True)
 
-selected_year = st.sidebar.selectbox(
-    "Select year",
-    available_years,
-    index=0,
+historical_all = load_historical_data()
+forecast_all = load_forecast_data()
+
+mode = st.sidebar.radio(
+    "Mode",
+    ["Historical", "Forecast"],
 )
 
-df = df_all[df_all["year"] == selected_year].copy()
+if mode == "Historical":
+    available_years = sorted(historical_all["year"].dropna().unique(), reverse=True)
 
-df_complete = df[df["is_hpi_complete"]].copy()
-df_incomplete = df[~df["is_hpi_complete"]].copy()
+    selected_year = st.sidebar.selectbox(
+        "Select year",
+        available_years,
+        index=0,
+    )
 
-st.caption(
-    f"Official hospital-data prototype for the Ruhr region. Selected year: {selected_year}"
-)
+    selected_scenario = None
+
+    df = historical_all[historical_all["year"] == selected_year].copy()
+    df_complete = df[df["is_hpi_complete"]].copy()
+    df_incomplete = df[~df["is_hpi_complete"]].copy()
+
+    st.caption(
+        f"Official hospital-data prototype for the Ruhr region. "
+        f"Selected year: {selected_year}"
+    )
+
+else:
+    available_scenarios = sorted(forecast_all["scenario"].dropna().unique())
+
+    selected_scenario = st.sidebar.selectbox(
+        "Select scenario",
+        available_scenarios,
+    )
+
+    available_years = sorted(forecast_all["year"].dropna().unique())
+
+    selected_year = st.sidebar.selectbox(
+        "Select forecast year",
+        available_years,
+        index=0,
+    )
+
+    df = forecast_all[
+        (forecast_all["scenario"] == selected_scenario)
+        & (forecast_all["year"] == selected_year)
+    ].copy()
+
+    df_complete = df.copy()
+    df_incomplete = pd.DataFrame()
+
+    st.caption(
+        f"Forecast mode for the Ruhr region. "
+        f"Scenario: {selected_scenario}. Selected year: {selected_year}"
+    )
+
 
 if df_complete.empty:
     st.error(
@@ -46,7 +94,8 @@ if df_complete.empty:
     )
     st.stop()
 
-if not df_incomplete.empty:
+
+if mode == "Historical" and not df_incomplete.empty:
     excluded_cities = ", ".join(sorted(df_incomplete["city"].unique()))
 
     st.warning(
@@ -76,7 +125,13 @@ st.divider()
 left, right = st.columns([2, 1])
 
 with left:
-    st.subheader("Hospital Pressure Index by city")
+    chart_title = (
+        "Hospital Pressure Index by city"
+        if mode == "Historical"
+        else f"Forecast HPI by city — {selected_scenario}"
+    )
+
+    st.subheader(chart_title)
 
     ranking_fig = px.bar(
         df_complete.sort_values("hpi", ascending=False),
@@ -165,14 +220,24 @@ with right:
         "not a missing or zero real value."
     )
 
-    st.divider()
+st.divider()
 
-city_history = df_all[
-    (df_all["city"] == selected_city)
-    & (df_all["is_hpi_complete"])
-].sort_values("year")
+if mode == "Historical":
+    city_history = historical_all[
+        (historical_all["city"] == selected_city)
+        & (historical_all["is_hpi_complete"])
+    ].sort_values("year")
 
-st.subheader(f"Historical trends — {selected_city}")
+    trends_title = f"Historical trends — {selected_city}"
+else:
+    city_history = forecast_all[
+        (forecast_all["city"] == selected_city)
+        & (forecast_all["scenario"] == selected_scenario)
+    ].sort_values("year")
+
+    trends_title = f"Forecast trends — {selected_city} — {selected_scenario}"
+
+st.subheader(trends_title)
 
 trend_col1, trend_col2 = st.columns(2)
 
@@ -225,32 +290,11 @@ with trend_col4:
 
 st.divider()
 
-st.subheader("City-level dataset — complete HPI rows")
-
-st.dataframe(
-    df_complete[
-        [
-            "city",
-            "year",
-            "hospitals",
-            "hospital_physicians",
-            "beds",
-            "stationary_patients",
-            "bed_occupancy_rate",
-            "avg_length_of_stay",
-            "patients_per_bed",
-            "patients_per_physician",
-            "hpi",
-        ]
-    ].sort_values("hpi", ascending=False),
-    use_container_width=True,
-)
-
-if not df_incomplete.empty:
-    st.subheader("Excluded rows — incomplete official data")
+if mode == "Historical":
+    st.subheader("City-level dataset — complete HPI rows")
 
     st.dataframe(
-        df_incomplete[
+        df_complete[
             [
                 "city",
                 "year",
@@ -260,14 +304,59 @@ if not df_incomplete.empty:
                 "stationary_patients",
                 "bed_occupancy_rate",
                 "avg_length_of_stay",
-                "data_completeness_status",
+                "patients_per_bed",
+                "patients_per_physician",
+                "hpi",
             ]
-        ].sort_values("city"),
+        ].sort_values("hpi", ascending=False),
+        use_container_width=True,
+    )
+
+    if not df_incomplete.empty:
+        st.subheader("Excluded rows — incomplete official data")
+
+        st.dataframe(
+            df_incomplete[
+                [
+                    "city",
+                    "year",
+                    "hospitals",
+                    "hospital_physicians",
+                    "beds",
+                    "stationary_patients",
+                    "bed_occupancy_rate",
+                    "avg_length_of_stay",
+                    "data_completeness_status",
+                ]
+            ].sort_values("city"),
+            use_container_width=True,
+        )
+
+else:
+    st.subheader("Forecast dataset — selected scenario and year")
+
+    st.dataframe(
+        df_complete[
+            [
+                "city",
+                "year",
+                "scenario",
+                "hospital_physicians",
+                "beds",
+                "stationary_patients",
+                "bed_occupancy_rate",
+                "avg_length_of_stay",
+                "patients_per_bed",
+                "patients_per_physician",
+                "hpi",
+            ]
+        ].sort_values("hpi", ascending=False),
         use_container_width=True,
     )
 
 st.info(
-    "This dashboard uses official Ruhr/NRW hospital statistics for 2015–2024. "
+    "This dashboard uses official Ruhr/NRW hospital statistics for 2015–2024 "
+    "and scenario-based forecasts for 2025–2030. "
     "The current HPI is hospital-only and does not yet include demographic or "
     "socio-economic indicators."
 )

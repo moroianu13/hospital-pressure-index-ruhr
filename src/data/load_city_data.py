@@ -319,3 +319,13 @@ def load_combined_ruhr_hospital_pressure_data() -> pd.DataFrame:
     df = add_hpi_scores_by_year(df)
 
     return df
+
+
+FORECAST_HOSPITAL_DATA_PATH = (
+    PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_forecast_2025_2030.csv"
+)
+
+
+def load_ruhr_hospital_forecast_data() -> pd.DataFrame:
+    """Load Ruhr hospital forecast dataset."""
+    return pd.read_csv(FORECAST_HOSPITAL_DATA_PATH)

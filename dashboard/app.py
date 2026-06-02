@@ -132,17 +132,28 @@ with right:
         y="component",
         orientation="h",
         text="score",
-        labels={"score": "Pressure score", "component": "Component"},
-        title="Pressure drivers",
+        labels={"score": "Relative pressure score", "component": "Component"},
+        title="Relative pressure drivers",
     )
 
     component_fig.update_traces(
         texttemplate="%{text:.1f}",
         textposition="outside",
+        cliponaxis=False,
     )
-    component_fig.update_layout(xaxis_range=[0, 100])
+
+    component_fig.update_layout(
+        xaxis_range=[0, 105],
+        margin=dict(l=20, r=40, t=50, b=20),
+    )
 
     st.plotly_chart(component_fig, use_container_width=True)
+
+    st.caption(
+        "Pressure driver scores are normalized relative to other Ruhr cities "
+        "in the selected year. 100 means highest pressure among included cities; "
+        "0 means lowest pressure."
+    )
 
 st.divider()
 

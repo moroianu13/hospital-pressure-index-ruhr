@@ -34,6 +34,32 @@ selected_year = st.sidebar.selectbox(
 
 df = df_all[df_all["year"] == selected_year].copy()
 
+
+
+required_hpi_columns = [
+    "stationary_patients",
+    "beds",
+    "hospital_physicians",
+    "bed_occupancy_rate",
+    "avg_length_of_stay",
+    "patients_per_bed",
+    "patients_per_physician",
+    "hpi",
+]
+
+df_complete = df[
+    df[required_hpi_columns].notna().all(axis=1)
+    & (df["stationary_patients"] > 0)
+    & (df["beds"] > 0)
+    & (df["hospital_physicians"] > 0)
+    & (df["bed_occupancy_rate"] > 0)
+    & (df["avg_length_of_stay"] > 0)
+].copy()
+
+df_incomplete = df[~df.index.isin(df_complete.index)].copy()
+
+
+
 required_hpi_columns = [
     "patients_per_bed",
     "patients_per_physician",
@@ -180,3 +206,12 @@ st.info(
     "This dashboard uses official Ruhr/NRW hospital statistics for 2015–2023. "
     "Current HPI version is hospital-only and does not yet include demographics or socio-economic indicators."
 )
+
+
+if not df_incomplete.empty:
+    excluded_cities = ", ".join(sorted(df_incomplete["city"].unique()))
+
+    st.warning(
+        f"Excluded from HPI ranking for {selected_year} due to incomplete or "
+        f"suppressed official data: {excluded_cities}."
+    )

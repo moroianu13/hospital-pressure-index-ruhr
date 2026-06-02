@@ -1,10 +1,9 @@
-
 """
-Merge Ruhr hospital capacity and workforce datasets.
+Merge Ruhr hospital capacity and physician datasets.
 
 Inputs:
     data/processed/ruhr_hospital_capacity_2015_2024_clean.csv
-    data/processed/ruhr_hospital_regionalvergleich_clean.csv
+    data/processed/ruhr_hospital_physicians_2015_2024_clean.csv
 
 Output:
     data/processed/ruhr_hospital_combined_2015_2024.csv
@@ -23,8 +22,8 @@ CAPACITY_PATH = (
     PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_capacity_2015_2024_clean.csv"
 )
 
-REGIONALVERGLEICH_PATH = (
-    PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_regionalvergleich_clean.csv"
+PHYSICIANS_PATH = (
+    PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_physicians_2015_2024_clean.csv"
 )
 
 OUTPUT_PATH = (
@@ -37,43 +36,39 @@ def load_capacity_data() -> pd.DataFrame:
     return pd.read_csv(CAPACITY_PATH)
 
 
-def load_workforce_data() -> pd.DataFrame:
-    """Load Regionalvergleich data containing hospital physicians."""
-    df = pd.read_csv(REGIONALVERGLEICH_PATH)
-
-    return df[
-        [
-            "city",
-            "year",
-            "hospital_physicians",
-        ]
-    ].copy()
+def load_physicians_data() -> pd.DataFrame:
+    """Load official Landesdatenbank hospital physicians data."""
+    return pd.read_csv(PHYSICIANS_PATH)
 
 
 def merge_datasets() -> pd.DataFrame:
-    """Merge capacity and workforce datasets by city and year."""
+    """Merge capacity and physician datasets by city and year."""
     capacity_df = load_capacity_data()
-    workforce_df = load_workforce_data()
+    physicians_df = load_physicians_data()
 
     df = capacity_df.merge(
-        workforce_df,
-        on=["city", "year"],
+        physicians_df,
+        on=["city", "year", "region_code"],
         how="left",
         validate="one_to_one",
     )
+
+    df["hospital_physicians"] = df["hospital_physicians_total"]
 
     df["patients_per_physician"] = (
         df["stationary_patients"] / df["hospital_physicians"]
     )
 
+    df["has_patient_data"] = df["stationary_patients"].notna()
     df["has_physician_data"] = df["hospital_physicians"].notna()
 
-    df["data_completeness_status"] = df["has_physician_data"].map(
-        {
-            True: "capacity_and_physicians",
-            False: "capacity_only",
-        }
-    )
+    df["data_completeness_status"] = "complete"
+    df.loc[~df["has_patient_data"], "data_completeness_status"] = "missing_patient_data"
+    df.loc[~df["has_physician_data"], "data_completeness_status"] = "missing_physician_data"
+    df.loc[
+        ~df["has_patient_data"] & ~df["has_physician_data"],
+        "data_completeness_status",
+    ] = "missing_patient_and_physician_data"
 
     df = df.sort_values(["city", "year"]).reset_index(drop=True)
 
@@ -91,6 +86,9 @@ def main() -> None:
     print("Years:", df["year"].min(), "-", df["year"].max())
     print("Cities:", sorted(df["city"].dropna().unique()))
 
+    print("\nCompleteness status:")
+    print(df["data_completeness_status"].value_counts(dropna=False))
+
     print("\n2024 rows:")
     print(
         df[df["year"] == 2024][
@@ -100,6 +98,7 @@ def main() -> None:
                 "beds",
                 "stationary_patients",
                 "hospital_physicians",
+                "patients_per_physician",
                 "data_completeness_status",
             ]
         ]

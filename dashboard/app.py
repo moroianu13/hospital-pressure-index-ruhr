@@ -56,14 +56,26 @@ if mode == "Historical":
         f"Official hospital-data prototype for the Ruhr region. "
         f"Selected year: {selected_year}"
     )
-
+    
 else:
+    SCENARIO_LABELS = {
+    "business_as_usual": "Business as usual",
+    "stress": "Stress scenario",
+    "recruitment_improvement": "Recruitment improvement",
+    "capacity_decline": "Capacity decline",
+}
     available_scenarios = sorted(forecast_all["scenario"].dropna().unique())
 
-    selected_scenario = st.sidebar.selectbox(
-        "Select scenario",
-        available_scenarios,
-    )
+    selected_scenario_label = st.sidebar.selectbox(
+    "Select scenario",
+    [SCENARIO_LABELS.get(s, s) for s in available_scenarios],
+)
+
+    selected_scenario = {
+    label: scenario for scenario, label in SCENARIO_LABELS.items()
+}.get(selected_scenario_label, selected_scenario_label)
+
+
 
     available_years = sorted(forecast_all["year"].dropna().unique())
 
@@ -83,7 +95,7 @@ else:
 
     st.caption(
         f"Forecast mode for the Ruhr region. "
-        f"Scenario: {selected_scenario}. Selected year: {selected_year}"
+        f"Scenario: {selected_scenario_label}. Selected year: {selected_year}"
     )
 
 

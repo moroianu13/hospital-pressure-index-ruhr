@@ -219,3 +219,12 @@ def load_official_ruhr_hospital_pressure_data() -> pd.DataFrame:
     df = add_official_hospital_hpi(df)
 
     return df
+
+COMBINED_HOSPITAL_DATA_PATH = (
+    PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_combined_2015_2024.csv"
+)
+
+
+def load_combined_ruhr_hospital_data() -> pd.DataFrame:
+    """Load combined Ruhr hospital capacity and physician dataset."""
+    return pd.read_csv(COMBINED_HOSPITAL_DATA_PATH)

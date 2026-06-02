@@ -3,8 +3,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.data.load_city_data import load_official_ruhr_hospital_pressure_data
-
+from src.data.load_city_data import load_combined_ruhr_hospital_data
+from src.features.pressure_index import calculate_hospital_only_hpi, min_max_scale
 
 st.set_page_config(
     page_title="Hospital Pressure Index — Ruhrgebiet",
@@ -16,7 +16,7 @@ st.title("Hospital Pressure Index — Ruhrgebiet")
 
 @st.cache_data
 def load_data():
-    return load_official_ruhr_hospital_pressure_data()
+    return load_combined_ruhr_hospital_data()
 
 
 
@@ -36,7 +36,7 @@ df = df_all[df_all["year"] == selected_year].copy()
 
 
 
-required_hpi_columns = [
+required_raw_columns = [
     "stationary_patients",
     "beds",
     "hospital_physicians",
@@ -44,11 +44,10 @@ required_hpi_columns = [
     "avg_length_of_stay",
     "patients_per_bed",
     "patients_per_physician",
-    "hpi",
 ]
 
 df_complete = df[
-    df[required_hpi_columns].notna().all(axis=1)
+    df[required_raw_columns].notna().all(axis=1)
     & (df["stationary_patients"] > 0)
     & (df["beds"] > 0)
     & (df["hospital_physicians"] > 0)
@@ -59,17 +58,54 @@ df_complete = df[
 df_incomplete = df[~df.index.isin(df_complete.index)].copy()
 
 
+def add_score_column(frame, source_column, score_column):
+    min_value = frame[source_column].min()
+    max_value = frame[source_column].max()
 
-required_hpi_columns = [
+    frame[score_column] = frame[source_column].apply(
+        lambda x: min_max_scale(x, min_value, max_value)
+    )
+
+    return frame
+
+
+df_complete = add_score_column(
+    df_complete,
     "patients_per_bed",
-    "patients_per_physician",
-    "bed_occupancy_rate",
-    "avg_length_of_stay",
-    "hpi",
-]
+    "patients_per_bed_score",
+)
 
-df_complete = df.dropna(subset=required_hpi_columns).copy()
-df_incomplete = df[df[required_hpi_columns].isna().any(axis=1)].copy()
+df_complete = add_score_column(
+    df_complete,
+    "patients_per_physician",
+    "patients_per_physician_score",
+)
+
+df_complete = add_score_column(
+    df_complete,
+    "bed_occupancy_rate",
+    "occupancy_score",
+)
+
+df_complete = add_score_column(
+    df_complete,
+    "avg_length_of_stay",
+    "length_of_stay_score",
+)
+
+df_complete["hpi"] = df_complete.apply(
+    lambda row: calculate_hospital_only_hpi(
+        patients_per_bed_score=row["patients_per_bed_score"],
+        patients_per_physician_score=row["patients_per_physician_score"],
+        occupancy_score=row["occupancy_score"],
+        length_of_stay_score=row["length_of_stay_score"],
+    ),
+    axis=1,
+)
+
+
+
+
 
 if not df_incomplete.empty:
     missing_cities = ", ".join(sorted(df_incomplete["city"].unique()))
@@ -114,17 +150,10 @@ with left:
 
 with right:
     selected_city = st.selectbox("Select city", df_complete["city"].sort_values())
-    city_row = df[df["city"] == selected_city].iloc[0]
+    city_row = df_complete[df_complete["city"] == selected_city].iloc[0]
     
-    if pd.isna(city_row["hpi"]):
-        st.warning(
-        "Insufficient data for HPI calculation in this city/year. "
-        "Some required hospital indicators are missing or suppressed."
-    )
-    else:
-        st.metric("HPI", f"{city_row['hpi']:.2f}/100")
-        
-    city_history = df_all[df_all["city"] == selected_city].sort_values("year")
+    
+    
     st.subheader(selected_city)
     st.metric("HPI", f"{city_row['hpi']:.2f}/100")
     st.metric("Patients per bed", round(city_row["patients_per_bed"], 1))
@@ -150,41 +179,14 @@ with right:
         }
     )
 
-    component_fig = px.bar(
-        component_df,
-        x="score",
-        y="component",
-        orientation="h",
-        text="score",
-        labels={"score": "Pressure score", "component": "Component"},
-        title="Pressure drivers",
-    )
-    
-    st.subheader(f"HPI trend — {selected_city}")
+   
 
-    trend_fig = px.line(
-    city_history,
-    x="year",
-    y="hpi",
-    markers=True,
-    labels={"year": "Year", "hpi": "Hospital Pressure Index"},
-)
-
-    trend_fig.update_layout(yaxis_range=[0, 100])
-
-    st.plotly_chart(trend_fig, use_container_width=True)
-
-
-    component_fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
-    component_fig.update_layout(xaxis_range=[0, 100])
-
-    st.plotly_chart(component_fig, use_container_width=True)
-st.divider()
+   
 
 st.subheader("City-level dataset")
 
 st.dataframe(
-    df[
+    df_complete[
         [
             "city",
             "year",
@@ -203,7 +205,7 @@ st.dataframe(
 )
 
 st.info(
-    "This dashboard uses official Ruhr/NRW hospital statistics for 2015–2023. "
+    "This dashboard uses official Ruhr/NRW hospital statistics for 2015–2024. " 
     "Current HPI version is hospital-only and does not yet include demographics or socio-economic indicators."
 )
 

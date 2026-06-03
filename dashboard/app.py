@@ -103,9 +103,14 @@ if mode == "Historical":
     )
 
 else:
-    analysis_layer = "Hospital system only"
-    layer_config = None
-    selected_hpi_column = "hpi"
+    analysis_layer = st.sidebar.radio(
+        "Analysis layer",
+        list(ANALYSIS_LAYERS.keys()),
+    )
+
+    layer_config = ANALYSIS_LAYERS[analysis_layer]
+    selected_hpi_column = layer_config["hpi_column"]
+    complete_flag = layer_config["complete_flag"]
 
     available_scenarios = sorted(forecast_all["scenario"].dropna().unique())
     available_scenario_labels = [
@@ -130,15 +135,15 @@ else:
         & (forecast_all["year"] == selected_year)
     ].copy()
 
-    df_complete = df.copy()
-    df_complete["selected_hpi"] = df_complete["hpi"]
-    df_incomplete = pd.DataFrame()
+    df_complete = df[df[complete_flag]].copy()
+    df_complete["selected_hpi"] = df_complete[selected_hpi_column]
+    df_incomplete = df[~df[complete_flag]].copy()
 
     st.caption(
         f"Forecast mode. Scenario: {selected_scenario_label}. "
+        f"Layer: {analysis_layer}. "
         f"Cards/table use final forecast year: {selected_year}"
     )
-
 
 if df_complete.empty:
     st.error(
@@ -218,15 +223,18 @@ with left:
             forecast_all["scenario"] == selected_scenario
         ].copy()
 
+        scenario_history = scenario_history[scenario_history[complete_flag]].copy()
+        scenario_history["selected_hpi"] = scenario_history[selected_hpi_column]
+
         central_fig = px.line(
             scenario_history,
             x="year",
-            y="hpi",
+            y="selected_hpi",
             color="city",
             markers=True,
             labels={
                 "year": "Year",
-                "hpi": "Hospital Pressure Index",
+                "selected_hpi": "Hospital Pressure Index",
                 "city": "City",
             },
             title="Forecast HPI evolution by city, 2025–2030",
@@ -371,7 +379,8 @@ else:
         & (forecast_all["scenario"] == selected_scenario)
     ].sort_values("year").copy()
 
-    city_history["selected_hpi"] = city_history["hpi"]
+    city_history = city_history[city_history[complete_flag]].copy()
+    city_history["selected_hpi"] = city_history[selected_hpi_column]
 
     trends_title = f"Forecast trends — {selected_city} — {selected_scenario_label}"
 
@@ -437,6 +446,11 @@ if mode == "Forecast":
         forecast_all["city"] == selected_city
     ].copy()
 
+    scenario_city_history = scenario_city_history[
+        scenario_city_history[complete_flag]
+    ].copy()
+    scenario_city_history["selected_hpi"] = scenario_city_history[selected_hpi_column]
+
     scenario_city_history["scenario_label"] = scenario_city_history["scenario"].map(
         SCENARIO_LABELS
     ).fillna(scenario_city_history["scenario"])
@@ -444,12 +458,12 @@ if mode == "Forecast":
     scenario_comparison_fig = px.line(
         scenario_city_history,
         x="year",
-        y="hpi",
+        y="selected_hpi",
         color="scenario_label",
         markers=True,
         labels={
             "year": "Year",
-            "hpi": "Hospital Pressure Index",
+            "selected_hpi": "Hospital Pressure Index",
             "scenario_label": "Scenario",
         },
         title=f"HPI forecast by scenario — {selected_city}",
@@ -536,16 +550,22 @@ else:
                 "year",
                 "scenario",
                 "forecast_confidence",
-                "hospital_physicians",
+                "acute_relevance_factor",
                 "beds",
+                "adjusted_beds",
+                "hospital_physicians",
+                "adjusted_hospital_physicians",
                 "stationary_patients",
                 "bed_occupancy_rate",
                 "avg_length_of_stay",
                 "patients_per_bed",
+                "adjusted_patients_per_bed",
                 "patients_per_physician",
-                "hpi",
+                "adjusted_patients_per_physician",
+                "hospital_hpi",
+                "acute_care_adjusted_hpi",
             ]
-        ].sort_values("hpi", ascending=False),
+        ].sort_values(selected_hpi_column, ascending=False),
         use_container_width=True,
     )
 

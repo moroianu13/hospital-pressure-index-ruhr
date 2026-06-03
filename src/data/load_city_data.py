@@ -329,3 +329,12 @@ FORECAST_HOSPITAL_DATA_PATH = (
 def load_ruhr_hospital_forecast_data() -> pd.DataFrame:
     """Load Ruhr hospital forecast dataset."""
     return pd.read_csv(FORECAST_HOSPITAL_DATA_PATH)
+
+ADJUSTED_HOSPITAL_PRESSURE_PATH = (
+    PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_pressure_adjusted_2015_2024.csv"
+)
+
+
+def load_adjusted_ruhr_hospital_pressure_data() -> pd.DataFrame:
+    """Load Ruhr hospital pressure data with hospital type correction layer."""
+    return pd.read_csv(ADJUSTED_HOSPITAL_PRESSURE_PATH)

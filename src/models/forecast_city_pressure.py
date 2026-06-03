@@ -1,17 +1,20 @@
 """
 Forecast Ruhr hospital pressure indicators for 2025–2030.
 
-Input:
+Inputs:
     data/processed/ruhr_hospital_combined_2015_2024.csv
+    data/processed/ruhr_hospital_type_correction.csv
 
 Output:
     data/processed/ruhr_hospital_forecast_2025_2030.csv
 
 Methodology:
-- Each city gets its own local historical growth rates.
-- Scenario forecasts modify the local city trend instead of applying the same
-  fixed growth rate to all cities.
-- Forecast HPI scores are scaled against a fixed 2024 historical reference.
+- Each city uses its own historical trend.
+- Scenarios modify the local city trend.
+- Forecast HPI scores are scaled against fixed 2024 historical reference values.
+- The output includes:
+    hospital_hpi
+    acute_care_adjusted_hpi
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from src.features.pressure_index import calculate_hospital_only_hpi
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_combined_2015_2024.csv"
+CORRECTION_PATH = PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_type_correction.csv"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "ruhr_hospital_forecast_2025_2030.csv"
 
 FORECAST_YEARS = list(range(2025, 2031))
@@ -78,14 +82,14 @@ SCENARIO_MODIFIERS = {
 }
 
 
-def load_data() -> pd.DataFrame:
-    """Load combined hospital dataset."""
-    return pd.read_csv(INPUT_PATH)
+def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    hospital_df = pd.read_csv(INPUT_PATH)
+    correction_df = pd.read_csv(CORRECTION_PATH)
+    return hospital_df, correction_df
 
 
 def get_complete_historical_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Keep rows usable for forecasting."""
-    complete = df[
+    return df[
         df[REQUIRED_COLUMNS].notna().all(axis=1)
         & (df["beds"] > 0)
         & (df["stationary_patients"] > 0)
@@ -94,22 +98,57 @@ def get_complete_historical_rows(df: pd.DataFrame) -> pd.DataFrame:
         & (df["avg_length_of_stay"] > 0)
     ].copy()
 
-    return complete
+
+def add_hospital_type_correction(
+    df: pd.DataFrame,
+    correction_df: pd.DataFrame,
+) -> pd.DataFrame:
+        if "acute_relevance_factor" in df.columns:
+            return df.copy()
+        
+        df = df.merge(
+        correction_df[
+            [
+                "city",
+                "acute_relevance_factor",
+                "total_hospital_sites",
+                "general_or_acute_sites",
+                "psychiatric_psychosomatic_sites",
+                "specialized_partial_sites",
+            ]
+        ],
+        on="city",
+        how="left",
+        validate="many_to_one",
+    )
+
+        df["acute_relevance_factor"] = df["acute_relevance_factor"].fillna(1.0)
+
+        return df
 
 
 def add_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Add derived pressure indicators."""
     df = df.copy()
 
     df["patients_per_bed"] = df["stationary_patients"] / df["beds"]
     df["patients_per_physician"] = df["stationary_patients"] / df["hospital_physicians"]
-    df["beds_per_hospital"] = pd.NA
+
+    df["adjusted_beds"] = df["beds"] * df["acute_relevance_factor"]
+    df["adjusted_hospital_physicians"] = (
+        df["hospital_physicians"] * df["acute_relevance_factor"]
+    )
+
+    df["adjusted_patients_per_bed"] = (
+        df["stationary_patients"] / df["adjusted_beds"]
+    )
+    df["adjusted_patients_per_physician"] = (
+        df["stationary_patients"] / df["adjusted_hospital_physicians"]
+    )
 
     return df
 
 
 def calculate_cagr(first_value: float, last_value: float, years: int) -> float:
-    """Calculate compound annual growth rate."""
     if pd.isna(first_value) or pd.isna(last_value):
         return 0.0
 
@@ -120,17 +159,11 @@ def calculate_cagr(first_value: float, last_value: float, years: int) -> float:
 
 
 def clip_growth_rate(column: str, rate: float) -> float:
-    """Limit extreme rates so short historical windows do not explode."""
     lower, upper = GROWTH_RATE_LIMITS[column]
     return max(lower, min(upper, rate))
 
 
 def calculate_city_growth_rates(city_df: pd.DataFrame) -> dict:
-    """
-    Calculate local historical growth rates per city.
-
-    Uses first and last complete year for that city.
-    """
     city_df = city_df.sort_values("year").copy()
 
     first = city_df.iloc[0]
@@ -151,7 +184,6 @@ def calculate_city_growth_rates(city_df: pd.DataFrame) -> dict:
 
 
 def get_forecast_confidence(city_df: pd.DataFrame) -> str:
-    """Assign simple confidence level based on number of complete historical years."""
     n_years = city_df["year"].nunique()
 
     if n_years >= 8:
@@ -166,7 +198,6 @@ def apply_scenario_growth(
     base_growth_rates: dict,
     scenario_modifiers: dict,
 ) -> dict:
-    """Combine local city growth rates with scenario modifiers."""
     scenario_growth = {}
 
     for column in REQUIRED_COLUMNS:
@@ -181,7 +212,6 @@ def scenario_forecast_city(
     scenario_name: str,
     scenario_modifiers: dict,
 ) -> pd.DataFrame:
-    """Create forecast from local city trend plus scenario modifiers."""
     city_df = city_df.sort_values("year").copy()
 
     latest = city_df.iloc[-1]
@@ -204,10 +234,17 @@ def scenario_forecast_city(
             "year": year,
             "scenario": scenario_name,
             "forecast_confidence": confidence,
+            "acute_relevance_factor": latest["acute_relevance_factor"],
+            "total_hospital_sites": latest["total_hospital_sites"],
+            "general_or_acute_sites": latest["general_or_acute_sites"],
+            "psychiatric_psychosomatic_sites": latest["psychiatric_psychosomatic_sites"],
+            "specialized_partial_sites": latest["specialized_partial_sites"],
         }
 
         for column in REQUIRED_COLUMNS:
-            row[column] = latest[column] * ((1 + scenario_growth_rates[column]) ** years_ahead)
+            row[column] = latest[column] * (
+                (1 + scenario_growth_rates[column]) ** years_ahead
+            )
             row[f"{column}_growth_rate"] = scenario_growth_rates[column]
 
         rows.append(row)
@@ -221,12 +258,6 @@ def fixed_reference_scale(
     max_value: float,
     cap_score: bool = False,
 ) -> float:
-    """
-    Scale value against fixed reference min/max.
-
-    For forecast, scores are not capped by default, so values can exceed 100.
-    This makes pressure above the 2024 reference visible.
-    """
     if pd.isna(value) or pd.isna(min_value) or pd.isna(max_value):
         return pd.NA
 
@@ -241,50 +272,59 @@ def fixed_reference_scale(
     return max(0.0, score)
 
 
-def build_2024_reference_stats(complete_df: pd.DataFrame) -> dict:
-    """Build fixed scaling reference from latest official complete year."""
+def build_reference_stats(
+    complete_df: pd.DataFrame,
+    correction_df: pd.DataFrame,
+) -> dict:
     latest_year = int(complete_df["year"].max())
 
     reference_df = complete_df[complete_df["year"] == latest_year].copy()
+    reference_df = add_hospital_type_correction(reference_df, correction_df)
     reference_df = add_derived_indicators(reference_df)
 
-    reference_columns = [
-        "patients_per_bed",
-        "patients_per_physician",
-        "bed_occupancy_rate",
-        "avg_length_of_stay",
-    ]
+    reference_specs = {
+        "hospital": [
+            "patients_per_bed",
+            "patients_per_physician",
+            "bed_occupancy_rate",
+            "avg_length_of_stay",
+        ],
+        "acute_adjusted": [
+            "adjusted_patients_per_bed",
+            "adjusted_patients_per_physician",
+            "bed_occupancy_rate",
+            "avg_length_of_stay",
+        ],
+    }
 
     reference_stats = {}
 
-    for column in reference_columns:
-        reference_stats[column] = {
-            "min": reference_df[column].min(),
-            "max": reference_df[column].max(),
-        }
+    for layer_name, columns in reference_specs.items():
+        reference_stats[layer_name] = {}
+
+        for column in columns:
+            reference_stats[layer_name][column] = {
+                "min": reference_df[column].min(),
+                "max": reference_df[column].max(),
+            }
 
     print(f"Using {latest_year} as fixed HPI reference year.")
 
     return reference_stats
 
 
-def add_hpi_scores_against_fixed_reference(
-    forecast_df: pd.DataFrame,
+def add_layer_hpi_scores(
+    df: pd.DataFrame,
     reference_stats: dict,
+    layer_name: str,
+    score_specs: list[tuple[str, str]],
+    output_hpi_column: str,
 ) -> pd.DataFrame:
-    """Calculate forecast HPI using fixed historical reference scaling."""
-    df = forecast_df.copy()
-
-    score_specs = [
-        ("patients_per_bed", "patients_per_bed_score"),
-        ("patients_per_physician", "patients_per_physician_score"),
-        ("bed_occupancy_rate", "occupancy_score"),
-        ("avg_length_of_stay", "length_of_stay_score"),
-    ]
+    df = df.copy()
 
     for source_column, score_column in score_specs:
-        min_value = reference_stats[source_column]["min"]
-        max_value = reference_stats[source_column]["max"]
+        min_value = reference_stats[layer_name][source_column]["min"]
+        max_value = reference_stats[layer_name][source_column]["max"]
 
         df[score_column] = df[source_column].apply(
             lambda value: fixed_reference_scale(
@@ -295,15 +335,59 @@ def add_hpi_scores_against_fixed_reference(
             )
         )
 
-    df["hpi"] = df.apply(
+    score_columns = [score_column for _, score_column in score_specs]
+
+    df[output_hpi_column] = df.apply(
         lambda row: calculate_hospital_only_hpi(
-            patients_per_bed_score=row["patients_per_bed_score"],
-            patients_per_physician_score=row["patients_per_physician_score"],
-            occupancy_score=row["occupancy_score"],
-            length_of_stay_score=row["length_of_stay_score"],
+            patients_per_bed_score=row[score_columns[0]],
+            patients_per_physician_score=row[score_columns[1]],
+            occupancy_score=row[score_columns[2]],
+            length_of_stay_score=row[score_columns[3]],
         ),
         axis=1,
     )
+
+    return df
+
+
+def add_hpi_scores(
+    forecast_df: pd.DataFrame,
+    reference_stats: dict,
+) -> pd.DataFrame:
+    df = forecast_df.copy()
+
+    hospital_score_specs = [
+        ("patients_per_bed", "patients_per_bed_score"),
+        ("patients_per_physician", "patients_per_physician_score"),
+        ("bed_occupancy_rate", "occupancy_score"),
+        ("avg_length_of_stay", "length_of_stay_score"),
+    ]
+
+    adjusted_score_specs = [
+        ("adjusted_patients_per_bed", "adjusted_patients_per_bed_score"),
+        ("adjusted_patients_per_physician", "adjusted_patients_per_physician_score"),
+        ("bed_occupancy_rate", "adjusted_occupancy_score"),
+        ("avg_length_of_stay", "adjusted_length_of_stay_score"),
+    ]
+
+    df = add_layer_hpi_scores(
+        df=df,
+        reference_stats=reference_stats,
+        layer_name="hospital",
+        score_specs=hospital_score_specs,
+        output_hpi_column="hospital_hpi",
+    )
+
+    df = add_layer_hpi_scores(
+        df=df,
+        reference_stats=reference_stats,
+        layer_name="acute_adjusted",
+        score_specs=adjusted_score_specs,
+        output_hpi_column="acute_care_adjusted_hpi",
+    )
+
+    # Backward compatibility for dashboard or older code.
+    df["hpi"] = df["hospital_hpi"]
 
     numeric_columns = [
         "beds",
@@ -313,11 +397,21 @@ def add_hpi_scores_against_fixed_reference(
         "avg_length_of_stay",
         "patients_per_bed",
         "patients_per_physician",
+        "adjusted_beds",
+        "adjusted_hospital_physicians",
+        "adjusted_patients_per_bed",
+        "adjusted_patients_per_physician",
+        "hospital_hpi",
+        "acute_care_adjusted_hpi",
         "hpi",
         "patients_per_bed_score",
         "patients_per_physician_score",
         "occupancy_score",
         "length_of_stay_score",
+        "adjusted_patients_per_bed_score",
+        "adjusted_patients_per_physician_score",
+        "adjusted_occupancy_score",
+        "adjusted_length_of_stay_score",
         "beds_growth_rate",
         "stationary_patients_growth_rate",
         "hospital_physicians_growth_rate",
@@ -332,11 +426,15 @@ def add_hpi_scores_against_fixed_reference(
 
 
 def build_forecasts() -> pd.DataFrame:
-    """Build all city forecasts and scenarios."""
-    df = load_data()
-    complete_df = get_complete_historical_rows(df)
+    hospital_df, correction_df = load_data()
 
-    reference_stats = build_2024_reference_stats(complete_df)
+    complete_df = get_complete_historical_rows(hospital_df)
+    complete_df = add_hospital_type_correction(complete_df, correction_df)
+
+    reference_stats = build_reference_stats(
+        complete_df=complete_df,
+        correction_df=correction_df,
+    )
 
     forecast_frames = []
 
@@ -358,12 +456,14 @@ def build_forecasts() -> pd.DataFrame:
 
     forecast_df = pd.concat(forecast_frames, ignore_index=True)
     forecast_df = add_derived_indicators(forecast_df)
-    forecast_df = add_hpi_scores_against_fixed_reference(
+    forecast_df = add_hpi_scores(
         forecast_df=forecast_df,
         reference_stats=reference_stats,
     )
 
     forecast_df["data_type"] = "forecast"
+    forecast_df["is_hpi_complete"] = True
+    forecast_df["is_acute_adjusted_hpi_complete"] = True
 
     ordered_columns = [
         "city",
@@ -372,18 +472,35 @@ def build_forecasts() -> pd.DataFrame:
         "scenario",
         "data_type",
         "forecast_confidence",
+        "acute_relevance_factor",
+        "total_hospital_sites",
+        "general_or_acute_sites",
+        "psychiatric_psychosomatic_sites",
+        "specialized_partial_sites",
         "beds",
+        "adjusted_beds",
         "stationary_patients",
         "hospital_physicians",
+        "adjusted_hospital_physicians",
         "bed_occupancy_rate",
         "avg_length_of_stay",
         "patients_per_bed",
+        "adjusted_patients_per_bed",
         "patients_per_physician",
+        "adjusted_patients_per_physician",
         "patients_per_bed_score",
         "patients_per_physician_score",
         "occupancy_score",
         "length_of_stay_score",
+        "adjusted_patients_per_bed_score",
+        "adjusted_patients_per_physician_score",
+        "adjusted_occupancy_score",
+        "adjusted_length_of_stay_score",
+        "hospital_hpi",
+        "acute_care_adjusted_hpi",
         "hpi",
+        "is_hpi_complete",
+        "is_acute_adjusted_hpi_complete",
         "beds_growth_rate",
         "stationary_patients_growth_rate",
         "hospital_physicians_growth_rate",
@@ -392,7 +509,7 @@ def build_forecasts() -> pd.DataFrame:
     ]
 
     forecast_df = forecast_df[ordered_columns].sort_values(
-        ["scenario", "year", "hpi"],
+        ["scenario", "year", "hospital_hpi"],
         ascending=[True, True, False],
     )
 
@@ -411,20 +528,20 @@ def main() -> None:
     print("Scenarios:", sorted(forecast_df["scenario"].unique()))
     print("Cities:", sorted(forecast_df["city"].unique()))
 
-    print("\nScenario comparison preview:")
+    print("\nLatest forecast comparison:")
+    latest_year = int(forecast_df["year"].max())
     print(
-        forecast_df[
+        forecast_df[forecast_df["year"] == latest_year][
             [
                 "scenario",
-                "year",
                 "city",
-                "forecast_confidence",
-                "stationary_patients_growth_rate",
-                "hospital_physicians_growth_rate",
-                "beds_growth_rate",
-                "patients_per_bed",
-                "patients_per_physician",
-                "hpi",
+                "acute_relevance_factor",
+                "hospital_hpi",
+                "acute_care_adjusted_hpi",
+                "beds",
+                "adjusted_beds",
+                "hospital_physicians",
+                "adjusted_hospital_physicians",
             ]
         ].head(40)
     )

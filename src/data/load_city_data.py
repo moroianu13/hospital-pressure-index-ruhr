@@ -338,3 +338,16 @@ ADJUSTED_HOSPITAL_PRESSURE_PATH = (
 def load_adjusted_ruhr_hospital_pressure_data() -> pd.DataFrame:
     """Load Ruhr hospital pressure data with hospital type correction layer."""
     return pd.read_csv(ADJUSTED_HOSPITAL_PRESSURE_PATH)
+
+
+DEMOGRAPHIC_SOCIOECONOMIC_PRESSURE_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "processed"
+    / "ruhr_hospital_pressure_demographic_socioeconomic_2015_2024.csv"
+)
+
+
+def load_demographic_socioeconomic_pressure_data() -> pd.DataFrame:
+    """Load Ruhr hospital pressure data with demographic and socioeconomic layer."""
+    return pd.read_csv(DEMOGRAPHIC_SOCIOECONOMIC_PRESSURE_PATH)

@@ -124,12 +124,17 @@ def add_yearly_pressure_scores(df: pd.DataFrame) -> pd.DataFrame:
 def add_final_hpi_layers(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
+    # Demographic and socioeconomic factors act as a risk amplifier
+    # over acute-care-adjusted pressure, not as a replacement score.
     df["demographic_socioeconomic_hpi"] = (
-        df["acute_care_adjusted_hpi"] * 0.65
-        + df["demographic_socioeconomic_pressure_score"] * 0.35
+        df["acute_care_adjusted_hpi"]
+        + df["demographic_socioeconomic_pressure_score"] * 0.20
     )
 
-    # Compatibility aliases for dashboard layer naming later.
+    df["demographic_socioeconomic_hpi"] = df[
+        "demographic_socioeconomic_hpi"
+    ].clip(upper=100)
+
     df["hospital_type_corrected_hpi"] = df["acute_care_adjusted_hpi"]
 
     return df

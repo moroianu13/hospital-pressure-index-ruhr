@@ -129,6 +129,25 @@ def add_score_columns_by_year(
     return df
 
 
+def progressive_acute_hpi(row: pd.Series) -> float:
+    """Make acute-care HPI a progressive correction over hospital_hpi."""
+    hospital_hpi = row["hospital_hpi"]
+    recalculated_hpi = row["acute_care_recalculated_hpi"]
+    acute_factor = row["acute_relevance_factor"]
+
+    if pd.isna(hospital_hpi):
+        return pd.NA
+
+    if pd.isna(recalculated_hpi):
+        return hospital_hpi
+
+    if pd.isna(acute_factor) or acute_factor >= 0.999:
+        return hospital_hpi
+
+    return max(hospital_hpi, recalculated_hpi)
+
+
+
 def build_adjusted_pressure_dataset() -> pd.DataFrame:
     """Build final historical pressure dataset with base and adjusted HPI."""
     hospital_df, correction_df = load_data()
@@ -196,7 +215,18 @@ def build_adjusted_pressure_dataset() -> pd.DataFrame:
         output_hpi_column="acute_care_adjusted_hpi",
     )
 
-    # Preserve previous app compatibility.
+
+    # Preserve the fully recalculated acute-care HPI for audit/debugging.
+    df["acute_care_recalculated_hpi"] = df["acute_care_adjusted_hpi"]
+
+    # Product/clinical interpretation:
+    # The acute-care layer is a progressive correction over the all-hospital layer.
+    # It should not reduce pressure below the original all-hospital HPI.
+    df["acute_care_adjusted_hpi"] = df.apply(
+        progressive_acute_hpi,
+        axis=1,
+    )
+
     df["hpi"] = df["hospital_hpi"]
 
     numeric_columns = [
@@ -214,13 +244,14 @@ def build_adjusted_pressure_dataset() -> pd.DataFrame:
         "adjusted_patients_per_physician_score",
         "adjusted_occupancy_score",
         "adjusted_length_of_stay_score",
+        "acute_care_recalculated_hpi",
     ]
 
     for column in numeric_columns:
         df[column] = pd.to_numeric(df[column], errors="coerce").round(2)
 
     df = df.sort_values(["city", "year"]).reset_index(drop=True)
-
+   
     return df
 
 

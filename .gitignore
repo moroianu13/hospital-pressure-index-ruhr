@@ -8,3 +8,8 @@ data/processed/
 /models/
 reports/figures/
 .DS_Store
+
+# Manual review local databases and backups
+data/manual/*.db
+data/manual/backups/
+data/manual/hospital_registry_review.*.csv

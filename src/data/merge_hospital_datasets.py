@@ -53,10 +53,17 @@ def merge_datasets() -> pd.DataFrame:
         validate="one_to_one",
     )
 
-    df["hospital_physicians"] = df["hospital_physicians_total"]
+    df["hospital_physicians_headcount"] = df["hospital_physicians_total"]
+
+    df["hospital_physicians_fte_proxy"] = (
+    df["hospital_physicians_full_time"]
+    + df["hospital_physicians_part_time"] * 0.5
+    )
+
+    df["hospital_physicians"] = df["hospital_physicians_fte_proxy"]
 
     df["patients_per_physician"] = (
-        df["stationary_patients"] / df["hospital_physicians"]
+    df["stationary_patients"] / df["hospital_physicians"]
     )
 
     df["has_patient_data"] = df["stationary_patients"].notna()

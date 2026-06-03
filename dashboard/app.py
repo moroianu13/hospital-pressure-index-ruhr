@@ -53,22 +53,16 @@ selected_scenario = None
 selected_scenario_label = None
 
 if mode == "Historical":
-    available_years = sorted(historical_all["year"].dropna().unique(), reverse=True)
-
-    selected_year = st.sidebar.selectbox(
-        "Select year for cards/table",
-        available_years,
-        index=0,
-    )
+    selected_year = int(historical_all["year"].dropna().max())
 
     df = historical_all[historical_all["year"] == selected_year].copy()
     df_complete = df[df["is_hpi_complete"]].copy()
     df_incomplete = df[~df["is_hpi_complete"]].copy()
 
     st.caption(
-        f"Historical mode. Official Ruhr/NRW hospital data. "
-        f"Selected year for cards/table: {selected_year}"
-    )
+    f"Historical mode. Official Ruhr/NRW hospital data. "
+    f"Cards/table use latest available year: {selected_year}"
+)
 
 else:
     available_scenarios = sorted(forecast_all["scenario"].dropna().unique())
@@ -87,13 +81,7 @@ else:
         selected_scenario_label,
     )
 
-    available_years = sorted(forecast_all["year"].dropna().unique())
-
-    selected_year = st.sidebar.selectbox(
-        "Select forecast year for cards/table",
-        available_years,
-        index=0,
-    )
+    selected_year = int(forecast_all["year"].dropna().max())
 
     df = forecast_all[
         (forecast_all["scenario"] == selected_scenario)
@@ -104,9 +92,9 @@ else:
     df_incomplete = pd.DataFrame()
 
     st.caption(
-        f"Forecast mode. Scenario: {selected_scenario_label}. "
-        f"Selected year for cards/table: {selected_year}"
-    )
+    f"Forecast mode. Scenario: {selected_scenario_label}. "
+    f"Cards/table use final forecast year: {selected_year}"
+)
 
 
 if df_complete.empty:
@@ -219,15 +207,28 @@ with right:
     st.subheader(selected_city)
     st.metric("HPI", f"{city_row['hpi']:.2f}/100")
     st.metric("Patients per bed", f"{city_row['patients_per_bed']:.1f}")
-    st.metric("Patients per physician", f"{city_row['patients_per_physician']:.1f}")
+    st.metric(
+        "Patients per physician FTE proxy",
+        f"{city_row['patients_per_physician']:.1f}",
+    )
     st.metric("Bed occupancy", f"{city_row['bed_occupancy_rate']:.1f}%")
     st.metric("Average length of stay", f"{city_row['avg_length_of_stay']:.1f} days")
+
+    if mode == "Historical":
+        st.caption(
+            f"Physicians: {city_row['hospital_physicians_headcount']:.0f} headcount / "
+            f"{city_row['hospital_physicians_fte_proxy']:.1f} FTE proxy"
+        )
+    else:
+        st.caption(
+            f"Physician FTE proxy forecast: {city_row['hospital_physicians']:.1f}"
+        )
 
     component_df = pd.DataFrame(
         {
             "component": [
                 "Patients per bed",
-                "Patients per physician",
+                "Patients per physician FTE proxy",
                 "Occupancy",
                 "Length of stay",
             ],
@@ -345,8 +346,8 @@ with trend_col4:
         x="year",
         y="hospital_physicians",
         markers=True,
-        labels={"year": "Year", "hospital_physicians": "Hospital physicians"},
-        title="Doctors trend",
+        labels={"year": "Year", "hospital_physicians": "Physician FTE proxy"},
+        title="Physician FTE proxy trend",
     )
     st.plotly_chart(doctors_fig, use_container_width=True)
 
@@ -398,7 +399,8 @@ if mode == "Historical":
                 "city",
                 "year",
                 "hospitals",
-                "hospital_physicians",
+                "hospital_physicians_headcount",
+                "hospital_physicians_fte_proxy",
                 "beds",
                 "stationary_patients",
                 "bed_occupancy_rate",
@@ -420,7 +422,8 @@ if mode == "Historical":
                     "city",
                     "year",
                     "hospitals",
-                    "hospital_physicians",
+                    "hospital_physicians_headcount",
+                    "hospital_physicians_fte_proxy",
                     "beds",
                     "stationary_patients",
                     "bed_occupancy_rate",
@@ -440,6 +443,7 @@ else:
                 "city",
                 "year",
                 "scenario",
+                "forecast_confidence",
                 "hospital_physicians",
                 "beds",
                 "stationary_patients",
